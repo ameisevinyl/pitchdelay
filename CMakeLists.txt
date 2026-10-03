@@ -62,11 +62,11 @@ target_link_libraries(PitchDelay
            juce::juce_recommended_warning_flags)
 
 # ---- core (JUCE-free) -----------------------------------------------------
-add_library(pitchdelay_core STATIC core/DelayLine.cpp)
+add_library(pitchdelay_core STATIC core/DelayLine.cpp core/DelaySettings.cpp)
 target_include_directories(pitchdelay_core PUBLIC core)
 target_compile_features(pitchdelay_core PUBLIC cxx_std_17)
 
 enable_testing()
-add_executable(pitchdelay_core_tests tests/DelayLineTests.cpp)
+add_executable(pitchdelay_core_tests tests/DelayLineTests.cpp tests/DelaySettingsTests.cpp)
 target_link_libraries(pitchdelay_core_tests PRIVATE pitchdelay_core Catch2::Catch2WithMain)
 add_test(NAME core COMMAND pitchdelay_core_tests)
