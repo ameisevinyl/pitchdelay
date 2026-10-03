@@ -233,9 +233,9 @@ AU="$(find "$BUILD" -maxdepth 4 -name PitchDelay.component -print -quit)"
 [[ -n "$VST3" && -n "$AU" ]] || { echo "plugins not found under $BUILD" >&2; exit 1; }
 
 echo "== pluginval VST3: $VST3"
-"$PLUGINVAL" --strictness-level 10 --validate-in-process "${GUI_FLAG[@]}" "$VST3"
+"$PLUGINVAL" --strictness-level 10 --validate-in-process ${GUI_FLAG[@]+"${GUI_FLAG[@]}"} "$VST3"
 echo "== pluginval AU: $AU"
-"$PLUGINVAL" --strictness-level 10 --validate-in-process "${GUI_FLAG[@]}" "$AU"
+"$PLUGINVAL" --strictness-level 10 --validate-in-process ${GUI_FLAG[@]+"${GUI_FLAG[@]}"} "$AU"
 
 echo "== auval"
 DEST="$HOME/Library/Audio/Plug-Ins/Components"
