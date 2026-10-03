@@ -39,8 +39,10 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    // Delay currently in effect, in sample frames (for the editor readout and the tail length).
-    int getCurrentDelayFrames() const noexcept { return currentDelayFrames.load(); }
+    // Delay the current parameters resolve to, in sample frames. Computed from the live
+    // parameters, so it is right even before any audio has been processed (editor readout,
+    // tail length queried by a host right after restoring state).
+    int getCurrentDelayFrames() const noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -49,8 +51,7 @@ private:
     void updateDelay();
 
     pitchdelay::DelayLine delayLine;
-    double sampleRate_ = 44100.0;
-    std::atomic<int> currentDelayFrames { 0 };
+    std::atomic<double> sampleRate_ { 44100.0 };
 
     juce::AudioParameterChoice* modeParam = nullptr;
     juce::AudioParameterChoice* unitParam = nullptr;

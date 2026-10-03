@@ -60,26 +60,30 @@ bool PitchDelayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 
 void PitchDelayProcessor::prepareToPlay (double sampleRate, int)
 {
-    sampleRate_ = sampleRate;
+    sampleRate_.store (sampleRate);
     const int channels = std::max ({ 1, getTotalNumInputChannels(), getTotalNumOutputChannels() });
     delayLine.prepare (channels, maxDelayFrames (sampleRate));   // allocates and clears
     updateDelay();
 }
 
+int PitchDelayProcessor::getCurrentDelayFrames() const noexcept
+{
+    return computeDelayFrames (static_cast<Mode> (modeParam->getIndex()),
+                               static_cast<CustomUnit> (unitParam->getIndex()),
+                               (double) customMsParam->get(),
+                               customSamplesParam->get(),
+                               sampleRate_.load());
+}
+
 void PitchDelayProcessor::updateDelay()
 {
-    const int frames = computeDelayFrames (static_cast<Mode> (modeParam->getIndex()),
-                                           static_cast<CustomUnit> (unitParam->getIndex()),
-                                           (double) customMsParam->get(),
-                                           customSamplesParam->get(),
-                                           sampleRate_);
-    delayLine.setDelayFrames (frames);                           // hard jump when it changes
-    currentDelayFrames.store (delayLine.getDelayFrames());
+    delayLine.setDelayFrames (getCurrentDelayFrames());          // hard jump when it changes
 }
 
 double PitchDelayProcessor::getTailLengthSeconds() const
 {
-    return sampleRate_ > 0.0 ? (double) getCurrentDelayFrames() / sampleRate_ : 0.0;
+    const double sr = sampleRate_.load();
+    return sr > 0.0 ? (double) getCurrentDelayFrames() / sr : 0.0;
 }
 
 void PitchDelayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

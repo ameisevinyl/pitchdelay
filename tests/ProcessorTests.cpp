@@ -115,6 +115,26 @@ TEST_CASE ("tail length equals the delay so bounces keep the delayed end")
     REQUIRE (f.proc.getTailLengthSeconds() == Catch::Approx (0.9).margin (1e-9));
 }
 
+TEST_CASE ("delay readout and tail follow parameters and restored state before any audio is processed")
+{
+    Fixture f (48000.0);
+    f.set (pitchdelay::ids::mode, 1);                    // 45 RPM, no processBlock call
+    REQUIRE (f.proc.getCurrentDelayFrames() == 32000);
+    REQUIRE (f.proc.getTailLengthSeconds() == Catch::Approx (2.0 / 3.0).margin (1e-9));
+
+    Fixture saved (48000.0);
+    saved.set (pitchdelay::ids::mode, 2);
+    saved.set (pitchdelay::ids::customUnit, 1);
+    saved.set (pitchdelay::ids::customSamples, 4800.0f);
+    juce::MemoryBlock state;
+    saved.proc.getStateInformation (state);
+
+    Fixture loaded (48000.0);                            // host restores a project, then asks for the tail
+    loaded.proc.setStateInformation (state.getData(), (int) state.getSize());
+    REQUIRE (loaded.proc.getCurrentDelayFrames() == 4800);
+    REQUIRE (loaded.proc.getTailLengthSeconds() == Catch::Approx (0.1).margin (1e-9));
+}
+
 TEST_CASE ("switching to a higher sample rate re-allocates and still works")
 {
     Fixture f (44100.0);
