@@ -65,6 +65,8 @@ JUCE is fetched by CMake at a pinned release.
 - Custom milliseconds: 0–10,000, rounded to the nearest frame.
 - Custom samples: 0 up to the 10 s equivalent at the current rate; used as is.
 - Maximum delay 10 s (about 15 MB at 192 kHz stereo); larger values clamp.
+- The plugin reports its current delay as the **tail length**, so offline bounces keep the
+  delayed end of the audio. (Latency stays 0.)
 - No mix/dry-wet control. Parameters are not host-automatable.
 - Sample-rate change: frame count recomputed in `prepareToPlay`; speed modes
   and custom-ms follow the rate, custom-samples stays fixed.

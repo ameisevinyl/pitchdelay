@@ -70,3 +70,20 @@ enable_testing()
 add_executable(pitchdelay_core_tests tests/DelayLineTests.cpp tests/DelaySettingsTests.cpp)
 target_link_libraries(pitchdelay_core_tests PRIVATE pitchdelay_core Catch2::Catch2WithMain)
 add_test(NAME core COMMAND pitchdelay_core_tests)
+
+# ---- headless processor tests ---------------------------------------------
+target_link_libraries(PitchDelay PRIVATE pitchdelay_core)
+
+juce_add_console_app(pitchdelay_processor_tests PRODUCT_NAME "pitchdelay_processor_tests")
+target_sources(pitchdelay_processor_tests PRIVATE
+    ${PITCHDELAY_PROCESSOR_SOURCES}
+    tests/ProcessorTests.cpp)
+target_include_directories(pitchdelay_processor_tests PRIVATE plugin)
+target_compile_definitions(pitchdelay_processor_tests PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(pitchdelay_processor_tests PRIVATE
+    pitchdelay_core
+    juce::juce_audio_processors
+    juce::juce_recommended_config_flags
+    Catch2::Catch2WithMain)
+add_test(NAME processor COMMAND pitchdelay_processor_tests)
