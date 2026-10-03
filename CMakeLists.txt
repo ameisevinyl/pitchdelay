@@ -49,6 +49,7 @@ set(PITCHDELAY_PROCESSOR_SOURCES plugin/PluginProcessor.cpp)
 
 target_sources(PitchDelay PRIVATE
     ${PITCHDELAY_PROCESSOR_SOURCES}
+    plugin/PluginEditor.cpp
     plugin/PluginEntry.cpp)
 target_include_directories(PitchDelay PRIVATE plugin)
 target_compile_definitions(PitchDelay PUBLIC

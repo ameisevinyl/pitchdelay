@@ -59,6 +59,9 @@ int firstNonZero (const std::vector<float>& v)
 }
 }
 
+// The editor lives only in the plugin target; the headless tests never create one.
+juce::AudioProcessorEditor* PitchDelayProcessor::createEditor() { return nullptr; }
+
 TEST_CASE ("reports zero latency")
 {
     Fixture f;
