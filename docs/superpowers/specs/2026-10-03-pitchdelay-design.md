@@ -55,7 +55,11 @@ JUCE is fetched by CMake at a pinned release.
 - Per-sample processing, independent of host block size; N may be smaller or
   larger than a block; N = 0 is pass-through.
 - Mono and stereo, same delay on all channels.
-- Buffer is cleared on prepare, not on transport start/stop.
+- Buffer is cleared on prepare and on `reset()`, and **whenever the host transport is
+  stopped**: while the host reports "not playing" the buffer is wiped after every block and
+  the (non-bypassed) output is silent, so the next start begins with a full delay of zeros.
+  Hosts that give no transport information are treated as always playing. Jumps in playback
+  position while playing (cycle, relocate) do not clear the buffer.
 - First N frames after clearing are silence.
 
 ## Parameters

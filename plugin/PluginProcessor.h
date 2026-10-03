@@ -12,7 +12,8 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
-    // NOTE: reset() is deliberately NOT overridden: transport start/stop must not clear the buffer.
+    // Clears the delay buffer so the next start begins with a full delay of silence.
+    void reset() override { delayLine.reset(); }
     bool isBusesLayoutSupported (const BusesLayout&) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -49,6 +50,7 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void updateDelay();
+    bool hostIsStopped() const;
 
     pitchdelay::DelayLine delayLine;
     std::atomic<double> sampleRate_ { 44100.0 };

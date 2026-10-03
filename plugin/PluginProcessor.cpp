@@ -86,6 +86,15 @@ double PitchDelayProcessor::getTailLengthSeconds() const
     return sr > 0.0 ? (double) getCurrentDelayFrames() / sr : 0.0;
 }
 
+bool PitchDelayProcessor::hostIsStopped() const
+{
+    // Hosts without transport information (e.g. Standalone) are treated as always playing.
+    if (auto* playHead = getPlayHead())
+        if (const auto position = playHead->getPosition())
+            return ! position->getIsPlaying();
+    return false;
+}
+
 void PitchDelayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     // Deliberately NO juce::ScopedNoDenormals: the output must stay bit-identical to the input.
@@ -94,13 +103,26 @@ void PitchDelayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         processBlockBypassed (buffer, midi);
         return;
     }
+    if (hostIsStopped())
+    {
+        // Nothing may survive a stop: the next start must begin with a full delay of silence.
+        delayLine.reset();
+        buffer.clear();
+        return;
+    }
     updateDelay();
     delayLine.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
 }
 
 void PitchDelayProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    // Output stays the input (undelayed); keep recording so un-bypass is seamless.
+    // Output stays the input (undelayed); keep recording so un-bypass is seamless,
+    // except while the host is stopped, when the buffer is wiped instead.
+    if (hostIsStopped())
+    {
+        delayLine.reset();
+        return;
+    }
     updateDelay();
     delayLine.record (buffer.getArrayOfReadPointers(), buffer.getNumChannels(), buffer.getNumSamples());
 }

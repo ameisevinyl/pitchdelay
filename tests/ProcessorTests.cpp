@@ -51,6 +51,25 @@ struct Fixture
     }
 };
 
+// Minimal host transport for the tests.
+struct FakePlayHead : juce::AudioPlayHead
+{
+    bool playing = true;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying (playing);
+        return info;
+    }
+};
+
+std::vector<float> ramp (size_t n, float start = 1.0f)
+{
+    std::vector<float> r (n);
+    for (size_t i = 0; i < n; ++i) r[i] = start + (float) i;
+    return r;
+}
+
 int firstNonZero (const std::vector<float>& v)
 {
     for (size_t i = 0; i < v.size(); ++i)
@@ -185,6 +204,97 @@ TEST_CASE ("NaN, inf and denormals pass through bit-identically")
     const auto out = f.run (in);
     for (size_t i = 0; i < in.size(); ++i)
         REQUIRE (bitsOf (out[i]) == (i < 100 ? 0u : bitsOf (in[i - 100])));
+}
+
+TEST_CASE ("stopping the transport wipes the buffer so a restart begins with a full delay of zeros")
+{
+    Fixture f (48000.0);
+    FakePlayHead host;
+    f.proc.setPlayHead (&host);
+    f.set (pitchdelay::ids::mode, 2);
+    f.set (pitchdelay::ids::customUnit, 1);
+    f.set (pitchdelay::ids::customSamples, 100.0f);
+
+    host.playing = true;
+    f.run (ramp (1000));                       // fills the buffer with old audio
+
+    host.playing = false;
+    const auto whileStopped = f.run (ramp (300, 5000.0f));   // input keeps arriving while stopped
+    for (float v : whileStopped) REQUIRE (v == 0.0f);        // drive output is silent while stopped
+
+    host.playing = true;                       // start again from the top
+    const auto restarted = f.run (std::vector<float> (300, 0.0f));
+    for (float v : restarted) REQUIRE (v == 0.0f);           // nothing old comes out
+
+    f.proc.setPlayHead (nullptr);
+}
+
+TEST_CASE ("after a stop, playback delays by exactly N frames again")
+{
+    Fixture f (48000.0);
+    FakePlayHead host;
+    f.proc.setPlayHead (&host);
+    f.set (pitchdelay::ids::mode, 2);
+    f.set (pitchdelay::ids::customUnit, 1);
+    f.set (pitchdelay::ids::customSamples, 100.0f);
+
+    host.playing = false;
+    f.run (ramp (200));
+    host.playing = true;
+    std::vector<float> in (400, 0.0f);
+    in[0] = 1.0f;
+    REQUIRE (firstNonZero (f.run (in)) == 100);
+
+    f.proc.setPlayHead (nullptr);
+}
+
+TEST_CASE ("bypass while the transport is stopped still passes audio through, and wipes the buffer")
+{
+    Fixture f (48000.0);
+    FakePlayHead host;
+    f.proc.setPlayHead (&host);
+    f.set (pitchdelay::ids::mode, 2);
+    f.set (pitchdelay::ids::customUnit, 1);
+    f.set (pitchdelay::ids::customSamples, 100.0f);
+
+    host.playing = true;
+    f.run (ramp (500));
+    f.set (pitchdelay::ids::bypass, 1.0f);
+    host.playing = false;
+    const auto r = ramp (200, 9000.0f);
+    REQUIRE (f.run (r) == r);                  // bypass: undelayed pass-through
+
+    f.set (pitchdelay::ids::bypass, 0.0f);
+    host.playing = true;
+    for (float v : f.run (std::vector<float> (300, 0.0f))) REQUIRE (v == 0.0f);
+
+    f.proc.setPlayHead (nullptr);
+}
+
+TEST_CASE ("reset() clears the buffer")
+{
+    Fixture f (48000.0);
+    f.set (pitchdelay::ids::mode, 2);
+    f.set (pitchdelay::ids::customUnit, 1);
+    f.set (pitchdelay::ids::customSamples, 100.0f);
+
+    f.run (ramp (1000));
+    f.proc.reset();
+    for (float v : f.run (std::vector<float> (300, 0.0f))) REQUIRE (v == 0.0f);
+}
+
+TEST_CASE ("a host that reports the transport as playing delays normally")
+{
+    Fixture f (48000.0);
+    FakePlayHead host;
+    f.proc.setPlayHead (&host);
+    f.set (pitchdelay::ids::mode, 2);
+    f.set (pitchdelay::ids::customUnit, 1);
+    f.set (pitchdelay::ids::customSamples, 100.0f);
+    std::vector<float> in (400, 0.0f);
+    in[0] = 1.0f;
+    REQUIRE (firstNonZero (f.run (in)) == 100);
+    f.proc.setPlayHead (nullptr);
 }
 
 TEST_CASE ("mono layout works")
