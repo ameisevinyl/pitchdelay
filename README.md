@@ -11,7 +11,11 @@ Design: `docs/superpowers/specs/2026-10-03-pitchdelay-design.md`
 
 ## Use (Logic / any DAW)
 Route the track twice: one path untouched → pitch output; one path through PitchDelay → drive
-output. Pick 33⅓ RPM or 45 RPM (or Custom) before cutting. Bypass passes audio undelayed.
+output. Pick the speed (33⅓ or 45 RPM) and the fraction of a revolution (1/2 by default; 1/1 … 1/16 for
+testing). Fine-tune the delay in samples or milliseconds in the two fields. **Calibration** replaces
+the audio with a 1 kHz tone burst every N frames (N = the delay, default level −20 dB) for measuring
+the real platter speed. Bypass passes audio undelayed; a stopped transport silences the output and
+clears the buffer.
 
 ## Build
 Requires Xcode command line tools, CMake ≥ 3.22, Ninja.
