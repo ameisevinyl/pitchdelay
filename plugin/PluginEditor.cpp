@@ -121,6 +121,12 @@ PitchDelayEditor::PitchDelayEditor (PitchDelayProcessor& p)
     startTimerHz (15);
 }
 
+void PitchDelayEditor::paint (juce::Graphics& g)
+{
+    // Hosts do not paint behind a plugin editor; without this the light label text is unreadable.
+    g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
+}
+
 void PitchDelayEditor::resized()
 {
     auto area = getLocalBounds().reduced (16);

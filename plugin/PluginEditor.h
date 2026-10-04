@@ -34,6 +34,7 @@ public:
     explicit PitchDelayEditor (PitchDelayProcessor&);
     ~PitchDelayEditor() override = default;
 
+    void paint (juce::Graphics&) override;
     void resized() override;
 
     // Refreshes the fields and the readout from the processor (also run by the timer).

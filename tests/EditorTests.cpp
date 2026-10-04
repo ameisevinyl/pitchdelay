@@ -151,3 +151,40 @@ TEST_CASE ("the readout shows the delay and the calibration status")
     REQUIRE (f.editor->getStatusText().contains ("CALIBRATION"));
     REQUIRE (f.editor->getStatusText().contains ("43200"));
 }
+
+TEST_CASE ("the editor paints its own opaque background so the light label text is readable")
+{
+    EditorFixture f;
+    const auto image = f.editor->createComponentSnapshot (f.editor->getLocalBounds(), true, 1.0f);
+    const auto expected = f.editor->getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+    const auto pixel = image.getPixelAt (3, 3);   // top-left corner: nothing is drawn there
+    REQUIRE (pixel.getARGB() == expected.getARGB());
+}
+
+// Optional: renders the editor to PNG files in $PITCHDELAY_SNAPSHOT_DIR for a visual check
+// without opening a window. Does nothing when the variable is not set.
+TEST_CASE ("editor snapshot (only when PITCHDELAY_SNAPSHOT_DIR is set)")
+{
+    const auto dir = juce::SystemStats::getEnvironmentVariable ("PITCHDELAY_SNAPSHOT_DIR", {});
+    if (dir.isEmpty())
+        return;
+
+    EditorFixture f;
+    const auto save = [&f, &dir] (const juce::String& name)
+    {
+        f.editor->updateFromProcessor();
+        const auto image = f.editor->createComponentSnapshot (f.editor->getLocalBounds(), true, 2.0f);
+        juce::File file (dir);
+        file = file.getChildFile (name);
+        file.deleteFile();
+        juce::FileOutputStream out (file);
+        REQUIRE (out.openedOk());
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    };
+    save ("editor-default.png");
+
+    auto* calibration = f.proc.apvts.getParameter (ids::calibration);
+    calibration->setValueNotifyingHost (1.0f);
+    f.proc.setDelayFrames (43210);
+    save ("editor-calibration.png");
+}
