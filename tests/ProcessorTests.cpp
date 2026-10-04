@@ -4,7 +4,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <atomic>
 #include <random>
+#include <thread>
 #include <vector>
 
 #include "DelaySettings.h"
@@ -570,6 +572,68 @@ TEST_CASE ("a migrated state does not keep the removed parameters when saved aga
     REQUIRE (xml->getChildByAttribute ("id", "customMs") == nullptr);
     REQUIRE (xml->getChildByAttribute ("id", "customSamples") == nullptr);
     REQUIRE (xml->getChildByAttribute ("id", "customUnit") == nullptr);
+}
+
+// A saved state of this build that carries only the delay properties.
+juce::MemoryBlock stateWithDelay (int frames, double rate)
+{
+    juce::ValueTree s ("PitchDelayState");
+    s.setProperty ("delayFrames", frames, nullptr);
+    s.setProperty ("delayRate", rate, nullptr);
+    juce::MemoryBlock block;
+    juce::AudioProcessor::copyXmlToBinary (*s.createXml(), block);
+    return block;
+}
+
+TEST_CASE ("a restored delay above the maximum is clamped, also at the same sample rate")
+{
+    Fixture f (48000.0);
+    auto s = stateWithDelay (1500000000, 48000.0);
+    f.proc.setStateInformation (s.getData(), (int) s.getSize());
+    REQUIRE (f.proc.getCurrentDelayFrames() == 480000);
+
+    Fixture g (48000.0, 512, 2, false);        // restored before prepareToPlay, then prepared at the same rate
+    g.proc.setStateInformation (s.getData(), (int) s.getSize());
+    g.proc.prepareToPlay (48000.0, 512);
+    REQUIRE (g.proc.getCurrentDelayFrames() == 480000);
+}
+
+TEST_CASE ("a first-release state loaded onto a non-default fraction resets the fraction to 1/2")
+{
+    Fixture f (48000.0);
+    f.set (ids::fraction, 0);                  // 1/1
+    auto s45 = legacyState (1, 0, 900.0, 0);
+    f.proc.setStateInformation (s45.getData(), (int) s45.getSize());
+    REQUIRE (f.get (ids::fraction) == (float) pitchdelay::kDefaultFractionIndex);
+    REQUIRE (f.get (ids::mode) == 1.0f);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 32000);
+}
+
+TEST_CASE ("prepareToPlay racing setStateInformation never leaves a delay for the wrong sample rate")
+{
+    Fixture f (44100.0);
+    f.proc.setDelayFrames (39700);
+    juce::MemoryBlock state;
+    f.proc.getStateInformation (state);        // 39700 frames at 44.1 kHz
+
+    std::atomic<bool> stop { false };
+    std::thread preparer ([&f, &stop]
+    {
+        bool high = false;
+        while (! stop.load())
+        {
+            high = ! high;
+            f.proc.prepareToPlay (high ? 48000.0 : 44100.0, 512);
+        }
+    });
+    for (int i = 0; i < 1500; ++i)
+        f.proc.setStateInformation (state.getData(), (int) state.getSize());
+    stop.store (true);
+    preparer.join();
+
+    // 39700 frames @ 44.1 kHz and 43211 frames @ 48 kHz are the same duration; a delay computed for
+    // one rate but used at the other would be off by about 8 %.
+    REQUIRE (f.proc.getTailLengthSeconds() == Catch::Approx (39700.0 / 44100.0).margin (2.0e-4));
 }
 
 TEST_CASE ("parameters are not host-automatable except bypass, which is the host bypass")

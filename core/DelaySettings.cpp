@@ -50,8 +50,10 @@ int baseDelayFrames (Speed speed, int fractionIndex, double sampleRate)
 
 int rescaleFrames (int frames, double fromRate, double toRate)
 {
-    if (fromRate <= 0.0 || toRate <= 0.0 || fromRate == toRate)
+    if (toRate <= 0.0)
         return frames;
+    if (fromRate <= 0.0 || fromRate == toRate)
+        return clampFrames (frames, toRate);
 
     const std::int64_t n = std::max (frames, 0);
     std::int64_t result;

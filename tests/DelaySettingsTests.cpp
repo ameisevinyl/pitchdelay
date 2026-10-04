@@ -84,3 +84,11 @@ TEST_CASE ("clampFrames and millisecondsForFrames")
     REQUIRE (millisecondsForFrames (0, 48000.0) == 0.0);
     REQUIRE (millisecondsForFrames (100, 0.0) == 0.0);
 }
+
+TEST_CASE ("rescaling clamps even when the rate is unchanged or the source rate is unknown")
+{
+    REQUIRE (rescaleFrames (1500000000, 48000.0, 48000.0) == 480000);
+    REQUIRE (rescaleFrames (5000000, 0.0, 48000.0) == 480000);
+    REQUIRE (rescaleFrames (-4, 48000.0, 48000.0) == 0);
+    REQUIRE (rescaleFrames (1000, 48000.0, 0.0) == 1000);   // unknown target rate: unchanged
+}

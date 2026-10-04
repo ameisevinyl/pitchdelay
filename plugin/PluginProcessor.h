@@ -61,6 +61,11 @@ private:
     pitchdelay::PulseGenerator pulse;
     bool calibrating = false;   // audio thread only: true while the pulse phase is running
 
+    // Serialises the non-audio threads that read-modify-write the delay state (prepareToPlay,
+    // setStateInformation, setDelayFrames, the Speed/Fraction listener). The audio thread never
+    // takes it: it reads the delayFrames atomic once per block.
+    juce::CriticalSection delayStateLock;
+
     std::atomic<double> sampleRate_ { 0.0 };
     std::atomic<int> delayFrames { 0 };
     std::atomic<double> delayRate { 0.0 };     // rate delayFrames refers to; 0 = adopt the next prepare rate

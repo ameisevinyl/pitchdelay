@@ -123,6 +123,7 @@ void PitchDelayProcessor::reset()
 
 void PitchDelayProcessor::applyBaseDelay()
 {
+    const juce::ScopedLock lock (delayStateLock);
     const double sr = sampleRate_.load();
     if (sr <= 0.0)
         return;
@@ -141,6 +142,7 @@ void PitchDelayProcessor::parameterChanged (const juce::String&, float)
 
 void PitchDelayProcessor::setDelayFrames (int frames)
 {
+    const juce::ScopedLock lock (delayStateLock);
     const double sr = sampleRate_.load();
     if (sr <= 0.0)
         return;
@@ -152,26 +154,29 @@ void PitchDelayProcessor::setDelayFrames (int frames)
 
 void PitchDelayProcessor::prepareToPlay (double sampleRate, int)
 {
-    sampleRate_.store (sampleRate);
+    {
+        const juce::ScopedLock lock (delayStateLock);
+        sampleRate_.store (sampleRate);
 
-    const double legacyMs = pendingLegacyMs.load();
-    if (legacyMs >= 0.0)
-    {
-        delayFrames.store (clampFrames (framesForMilliseconds (legacyMs, sampleRate), sampleRate));
-        delayRate.store (sampleRate);
-        delayIsSet.store (true);
-        pendingLegacyMs.store (-1.0);
-    }
-    else if (delayIsSet.load())
-    {
-        const double from = delayRate.load();
-        delayFrames.store (from > 0.0 ? rescaleFrames (delayFrames.load(), from, sampleRate)
-                                      : clampFrames (delayFrames.load(), sampleRate));
-        delayRate.store (sampleRate);
-    }
-    else
-    {
-        applyBaseDelay();
+        const double legacyMs = pendingLegacyMs.load();
+        if (legacyMs >= 0.0)
+        {
+            delayFrames.store (clampFrames (framesForMilliseconds (legacyMs, sampleRate), sampleRate));
+            delayRate.store (sampleRate);
+            delayIsSet.store (true);
+            pendingLegacyMs.store (-1.0);
+        }
+        else if (delayIsSet.load())
+        {
+            const double from = delayRate.load();
+            delayFrames.store (from > 0.0 ? rescaleFrames (delayFrames.load(), from, sampleRate)
+                                          : clampFrames (delayFrames.load(), sampleRate));
+            delayRate.store (sampleRate);
+        }
+        else
+        {
+            applyBaseDelay();
+        }
     }
 
     const int channels = std::max ({ 1, getTotalNumInputChannels(), getTotalNumOutputChannels() });
@@ -264,6 +269,7 @@ void PitchDelayProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer
 void PitchDelayProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    const juce::ScopedLock lock (delayStateLock);
     state.setProperty (delayFramesProperty, delayFrames.load(), nullptr);
     state.setProperty (delayRateProperty, delayRate.load(), nullptr);
     if (const auto xml = state.createXml())
@@ -289,6 +295,7 @@ void PitchDelayProcessor::setStateInformation (const void* data, int sizeInBytes
 
     apvts.replaceState (tree);   // may run the Speed/Fraction listener; resolved explicitly below
 
+    const juce::ScopedLock lock (delayStateLock);   // sampleRate_ and the stores below stay consistent
     const double sr = sampleRate_.load();
     if (hasDelay && storedRate > 0.0)
     {

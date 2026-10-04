@@ -16,6 +16,8 @@ public:
     int getDelayFrames() const noexcept { return delay_; }
     int getMaxDelayFrames() const noexcept { return maxDelay_; }
     int getNumChannels() const noexcept { return numChannels_; }
+    // True when the buffer may hold audio; reset() skips the memory clear when it is already clean.
+    bool isDirty() const noexcept { return dirty_; }
 
     // In place: every channel becomes itself delayed by getDelayFrames().
     void process (float* const* channels, int numChannels, int numFrames) noexcept;
@@ -29,5 +31,6 @@ private:
     int size_ = 1;                // maxDelay_ + 1: write-then-read makes delay 0 valid
     int delay_ = 0;
     int writePos_ = 0;
+    bool dirty_ = false;
 };
 }

@@ -12,11 +12,16 @@ void DelayLine::prepare (int numChannels, int maxDelayFrames)
     buffer_.assign (static_cast<size_t> (numChannels_) * static_cast<size_t> (size_), 0.0f);
     delay_ = 0;
     writePos_ = 0;
+    dirty_ = false;
 }
 
 void DelayLine::reset() noexcept
 {
-    std::fill (buffer_.begin(), buffer_.end(), 0.0f);
+    if (dirty_)   // a stopped transport resets every block; do not memset 10 s of audio each time
+    {
+        std::fill (buffer_.begin(), buffer_.end(), 0.0f);
+        dirty_ = false;
+    }
     writePos_ = 0;
 }
 
@@ -28,6 +33,8 @@ void DelayLine::setDelayFrames (int frames) noexcept
 void DelayLine::process (float* const* channels, int numChannels, int numFrames) noexcept
 {
     const int n = std::min (numChannels, numChannels_);
+    if (n > 0 && numFrames > 0)
+        dirty_ = true;
     for (int c = 0; c < n; ++c)
     {
         float* ring = buffer_.data() + static_cast<size_t> (c) * static_cast<size_t> (size_);
@@ -49,6 +56,8 @@ void DelayLine::process (float* const* channels, int numChannels, int numFrames)
 void DelayLine::record (const float* const* channels, int numChannels, int numFrames) noexcept
 {
     const int n = std::min (numChannels, numChannels_);
+    if (n > 0 && numFrames > 0)
+        dirty_ = true;
     for (int c = 0; c < n; ++c)
     {
         float* ring = buffer_.data() + static_cast<size_t> (c) * static_cast<size_t> (size_);

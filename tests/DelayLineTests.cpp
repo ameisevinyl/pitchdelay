@@ -192,3 +192,31 @@ TEST_CASE ("channel count mismatches are safe")
     float* one[1] = { m.data() };
     d.process (one, 1, 10);
 }
+
+TEST_CASE ("reset() only touches the buffer when it holds audio, and a reset buffer still delays correctly")
+{
+    DelayLine d;
+    d.prepare (1, 100);
+    REQUIRE_FALSE (d.isDirty());
+
+    std::vector<float> x { 1.0f, 2.0f, 3.0f, 4.0f };
+    float* ch[1] = { x.data() };
+    d.process (ch, 1, 4);
+    REQUIRE (d.isDirty());
+    d.reset();
+    REQUIRE_FALSE (d.isDirty());
+
+    const float* rc[1] = { x.data() };
+    d.record (rc, 1, 4);
+    REQUIRE (d.isDirty());
+    d.reset();
+    REQUIRE_FALSE (d.isDirty());
+    d.reset();                                // already clean: stays clean
+    REQUIRE_FALSE (d.isDirty());
+
+    d.setDelayFrames (2);
+    std::vector<float> in { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+    const auto out = run (d, in, 5);
+    for (size_t i = 0; i < out.size(); ++i)
+        REQUIRE (out[i] == (i == 2 ? 1.0f : 0.0f));
+}
