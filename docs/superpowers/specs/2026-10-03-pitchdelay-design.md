@@ -80,8 +80,9 @@ JUCE is fetched by CMake at a pinned release.
   (9922.5 → 9923) and 1/16 (4961.25 → 4961), and at 88.2 kHz with 1/16 (9922.5 → 9923).
   The editor readout always shows the exact frame count in use.
 - Sample-rate rescale: a delay of D frames set at rate r1 becomes `round(D * r2 / r1)`
-  at rate r2, preserving its duration. For the base delays this is exact whenever the
-  base delay is a whole number of frames at both rates.
+  at rate r2, preserving its duration, clamped to the maximum delay of r2. For base delays
+  this is exact whenever the base delay is a whole number of frames at both rates. See
+  "Delay value" for how repeated rate changes avoid accumulating rounding errors.
 - Millisecond entry converts with `round(ms * sampleRate / 1000)`.
 - Maximum delay 10 s (`ceil(10 * sampleRate)` frames); larger values clamp.
 
@@ -108,8 +109,8 @@ Host-visible parameters (none is host-automatable except Bypass):
 - **Calibration level:** −60 to 0 dB, default −20 dB.
 - **Bypass:** the host's real bypass parameter.
 
-Not host parameters: the **delay in frames** and the sample rate it was set at are
-stored in the saved plugin state (see Delay value).
+Not host parameters: the **delay in frames**, whether it is tuned, and (when tuned) its anchor
+frames and rate are stored in the saved plugin state (see Delay value).
 
 - No mix/dry-wet control.
 - The plugin reports its current delay as the **tail length**, so offline bounces keep the
@@ -125,13 +126,22 @@ stored in the saved plugin state (see Delay value).
 - The editor's samples and milliseconds fields show D (milliseconds =
   `D / sampleRate * 1000`) and are linked. Typing or stepping either one sets D; milliseconds
   are rounded to the nearest frame.
-- Sample-rate change (new `prepareToPlay` rate): D is rescaled as described above, so
-  fine-tuning survives.
+- A delay is either **untouched** (set by Speed/Fraction) or **tuned** (typed or stepped).
+  - An untouched delay is recomputed exactly from Speed and Fraction at every sample rate
+    (one rounding, e.g. 33⅓ RPM, 1/16: 4961 frames at 44.1 kHz, 9923 at 88.2 kHz).
+  - A tuned delay remembers the frames and the sample rate it was set at (its anchor). Every later
+    rate is derived from the anchor, never from a previously rounded value, so after any number of
+    rate changes its duration is within half a frame of the time the user set, and returning to
+    the original rate restores the original frame count exactly. The anchor is kept even when the
+    delay is temporarily clamped at a low rate.
+  - Choosing Speed or Fraction makes the delay untouched again.
 - New plugin instance: D is the base delay for 33⅓ RPM, 1/2 revolution.
 - D is read on the audio thread through an atomic; editor and listeners write it.
 
 ### Saved-state compatibility
 
+- A session saved by the second release (frames + rate, no tuned flag) loads as a tuned delay
+  anchored at the stored frames and rate.
 - A session saved by the first release (parameters `mode` ∈ {33⅓, 45, Custom}, `customUnit`,
   `customMs`, `customSamples`) loads as follows: `mode` 33⅓ or 45 → that speed at 1/2 revolution
   with D = base delay; `mode` Custom → D = the old custom delay (milliseconds converted at the

@@ -9,6 +9,9 @@ namespace
 {
 const juce::Identifier delayFramesProperty { "delayFrames" };
 const juce::Identifier delayRateProperty { "delayRate" };
+const juce::Identifier delayTunedProperty { "delayTuned" };
+const juce::Identifier anchorFramesProperty { "delayAnchorFrames" };
+const juce::Identifier anchorRateProperty { "delayAnchorRate" };
 
 struct LegacyCustom
 {
@@ -121,17 +124,20 @@ void PitchDelayProcessor::reset()
     calibrating = false;
 }
 
+int PitchDelayProcessor::baseDelayAt (double sampleRate) const
+{
+    return baseDelayFrames (static_cast<Speed> (modeParam->getIndex()), fractionParam->getIndex(), sampleRate);
+}
+
 void PitchDelayProcessor::applyBaseDelay()
 {
+    // Speed or Fraction chosen (or an untouched delay at a new rate): exact value, no fine-tuning.
     const juce::ScopedLock lock (delayStateLock);
+    delayTuned = false;
+    pendingLegacyMs = -1.0;
     const double sr = sampleRate_.load();
-    if (sr <= 0.0)
-        return;
-    delayFrames.store (baseDelayFrames (static_cast<Speed> (modeParam->getIndex()),
-                                        fractionParam->getIndex(), sr));
-    delayRate.store (sr);
-    delayIsSet.store (true);
-    pendingLegacyMs.store (-1.0);
+    if (sr > 0.0)
+        delayFrames.store (baseDelayAt (sr));
 }
 
 void PitchDelayProcessor::parameterChanged (const juce::String&, float)
@@ -146,10 +152,11 @@ void PitchDelayProcessor::setDelayFrames (int frames)
     const double sr = sampleRate_.load();
     if (sr <= 0.0)
         return;
-    delayFrames.store (clampFrames (frames, sr));
-    delayRate.store (sr);
-    delayIsSet.store (true);
-    pendingLegacyMs.store (-1.0);
+    anchorFrames = clampFrames (frames, sr);
+    anchorRate = sr;
+    delayTuned = true;
+    pendingLegacyMs = -1.0;
+    delayFrames.store (anchorFrames);
 }
 
 void PitchDelayProcessor::prepareToPlay (double sampleRate, int)
@@ -158,20 +165,19 @@ void PitchDelayProcessor::prepareToPlay (double sampleRate, int)
         const juce::ScopedLock lock (delayStateLock);
         sampleRate_.store (sampleRate);
 
-        const double legacyMs = pendingLegacyMs.load();
-        if (legacyMs >= 0.0)
+        if (pendingLegacyMs >= 0.0)
         {
-            delayFrames.store (clampFrames (framesForMilliseconds (legacyMs, sampleRate), sampleRate));
-            delayRate.store (sampleRate);
-            delayIsSet.store (true);
-            pendingLegacyMs.store (-1.0);
+            anchorFrames = clampFrames (framesForMilliseconds (pendingLegacyMs, sampleRate), sampleRate);
+            anchorRate = sampleRate;
+            delayTuned = true;
+            pendingLegacyMs = -1.0;
         }
-        else if (delayIsSet.load())
+
+        if (delayTuned)
         {
-            const double from = delayRate.load();
-            delayFrames.store (from > 0.0 ? rescaleFrames (delayFrames.load(), from, sampleRate)
-                                          : clampFrames (delayFrames.load(), sampleRate));
-            delayRate.store (sampleRate);
+            if (anchorRate <= 0.0)
+                anchorRate = sampleRate;   // frames restored before the rate was known
+            delayFrames.store (rescaleFrames (anchorFrames, anchorRate, sampleRate));
         }
         else
         {
@@ -271,7 +277,13 @@ void PitchDelayProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto state = apvts.copyState();
     const juce::ScopedLock lock (delayStateLock);
     state.setProperty (delayFramesProperty, delayFrames.load(), nullptr);
-    state.setProperty (delayRateProperty, delayRate.load(), nullptr);
+    state.setProperty (delayRateProperty, sampleRate_.load(), nullptr);
+    state.setProperty (delayTunedProperty, delayTuned, nullptr);
+    if (delayTuned)
+    {
+        state.setProperty (anchorFramesProperty, anchorFrames, nullptr);
+        state.setProperty (anchorRateProperty, anchorRate, nullptr);
+    }
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -288,8 +300,12 @@ void PitchDelayProcessor::setStateInformation (const void* data, int sizeInBytes
 
     // Read what we need before the tree is handed to the parameters.
     const bool hasDelay = tree.hasProperty (delayFramesProperty) && tree.hasProperty (delayRateProperty);
+    const bool hasTunedFlag = tree.hasProperty (delayTunedProperty);
+    const bool storedTuned = (bool) tree.getProperty (delayTunedProperty, false);
     const int storedFrames = juce::jmax (0, (int) tree.getProperty (delayFramesProperty, 0));
     const double storedRate = (double) tree.getProperty (delayRateProperty, 0.0);
+    const int storedAnchorFrames = juce::jmax (0, (int) tree.getProperty (anchorFramesProperty, 0));
+    const double storedAnchorRate = (double) tree.getProperty (anchorRateProperty, 0.0);
     const auto legacy = readLegacyCustom (tree);
     stripLegacy (tree, legacy.isCustom);
 
@@ -297,45 +313,58 @@ void PitchDelayProcessor::setStateInformation (const void* data, int sizeInBytes
 
     const juce::ScopedLock lock (delayStateLock);   // sampleRate_ and the stores below stay consistent
     const double sr = sampleRate_.load();
-    if (hasDelay && storedRate > 0.0)
+    pendingLegacyMs = -1.0;
+
+    if (hasTunedFlag && storedTuned)
     {
-        pendingLegacyMs.store (-1.0);
-        delayIsSet.store (true);
+        // This build: a tuned delay with its anchor.
+        delayTuned = true;
+        anchorFrames = storedAnchorFrames;
+        anchorRate = storedAnchorRate;
+        delayFrames.store (sr > 0.0 ? rescaleFrames (anchorFrames, anchorRate > 0.0 ? anchorRate : sr, sr)
+                                    : anchorFrames);
+    }
+    else if (hasTunedFlag)
+    {
+        // This build: an untouched delay, recomputed from Speed and Fraction.
+        delayTuned = false;
         if (sr > 0.0)
-        {
-            delayFrames.store (rescaleFrames (storedFrames, storedRate, sr));
-            delayRate.store (sr);
-        }
-        else
-        {
-            delayFrames.store (storedFrames);
-            delayRate.store (storedRate);   // rescaled in prepareToPlay
-        }
+            delayFrames.store (baseDelayAt (sr));
+    }
+    else if (hasDelay && storedRate > 0.0)
+    {
+        // The previous build (frames + rate only) did not remember how a delay was set: keep it as tuned.
+        delayTuned = true;
+        anchorFrames = storedFrames;
+        anchorRate = storedRate;
+        delayFrames.store (sr > 0.0 ? rescaleFrames (anchorFrames, anchorRate, sr) : anchorFrames);
     }
     else if (legacy.isCustom && legacy.inMilliseconds)
     {
+        delayTuned = false;
         if (sr > 0.0)
         {
-            delayFrames.store (clampFrames (framesForMilliseconds (legacy.milliseconds, sr), sr));
-            delayRate.store (sr);
-            delayIsSet.store (true);
-            pendingLegacyMs.store (-1.0);
+            delayTuned = true;
+            anchorFrames = clampFrames (framesForMilliseconds (legacy.milliseconds, sr), sr);
+            anchorRate = sr;
+            delayFrames.store (anchorFrames);
         }
         else
         {
-            pendingLegacyMs.store (juce::jmax (0.0, legacy.milliseconds));   // resolved in prepareToPlay
+            pendingLegacyMs = juce::jmax (0.0, legacy.milliseconds);   // resolved in prepareToPlay
         }
     }
     else if (legacy.isCustom)
     {
-        pendingLegacyMs.store (-1.0);
-        delayIsSet.store (true);
-        delayFrames.store (sr > 0.0 ? clampFrames (legacy.samples, sr) : juce::jmax (0, legacy.samples));
-        delayRate.store (sr);   // 0 before prepare: kept as is when the rate becomes known
+        delayTuned = true;
+        anchorFrames = sr > 0.0 ? clampFrames (legacy.samples, sr) : juce::jmax (0, legacy.samples);
+        anchorRate = sr;   // 0 before prepare: adopted when the rate becomes known
+        delayFrames.store (anchorFrames);
     }
     else
     {
-        delayIsSet.store (false);
-        applyBaseDelay();   // no-op before prepareToPlay, which then computes it
+        delayTuned = false;   // first-release 33 1/3 or 45 RPM
+        if (sr > 0.0)
+            delayFrames.store (baseDelayAt (sr));
     }
 }

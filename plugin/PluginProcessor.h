@@ -54,6 +54,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void parameterChanged (const juce::String& parameterID, float newValue) override;
     void applyBaseDelay();
+    int baseDelayAt (double sampleRate) const;
     void updateDsp();
     bool hostIsStopped() const;
 
@@ -67,10 +68,16 @@ private:
     juce::CriticalSection delayStateLock;
 
     std::atomic<double> sampleRate_ { 0.0 };
-    std::atomic<int> delayFrames { 0 };
-    std::atomic<double> delayRate { 0.0 };     // rate delayFrames refers to; 0 = adopt the next prepare rate
-    std::atomic<bool> delayIsSet { false };    // a delay exists that must be kept (not recomputed) on prepare
-    std::atomic<double> pendingLegacyMs { -1.0 };   // first-release Custom ms waiting for a known rate
+    std::atomic<int> delayFrames { 0 };   // the delay in effect, in frames at sampleRate_ (the audio thread reads this)
+
+    // The rest is guarded by delayStateLock. A delay is either "untouched" (recomputed exactly from
+    // Speed and Fraction at every sample rate) or "tuned" (typed or stepped by the user). A tuned delay
+    // remembers the frames and the rate it was set at, and every later rate is derived from that anchor
+    // instead of from a rounded copy, so its time never drifts over repeated rate changes.
+    bool delayTuned = false;
+    int anchorFrames = 0;
+    double anchorRate = 0.0;               // 0 = adopt the rate of the next prepareToPlay
+    double pendingLegacyMs = -1.0;         // first-release Custom ms waiting for a known rate
 
     juce::AudioParameterChoice* modeParam = nullptr;
     juce::AudioParameterChoice* fractionParam = nullptr;

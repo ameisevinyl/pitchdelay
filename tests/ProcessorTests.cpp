@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <atomic>
@@ -634,6 +635,101 @@ TEST_CASE ("prepareToPlay racing setStateInformation never leaves a delay for th
     // 39700 frames @ 44.1 kHz and 43211 frames @ 48 kHz are the same duration; a delay computed for
     // one rate but used at the other would be off by about 8 %.
     REQUIRE (f.proc.getTailLengthSeconds() == Catch::Approx (39700.0 / 44100.0).margin (2.0e-4));
+}
+
+// ---- exact time across sample-rate changes ---------------------------------------
+
+namespace
+{
+// Duration check: a whole-frame delay can be at most half a frame away from the exact time.
+void requireSameTime (const PitchDelayProcessor& proc, double rate, double expectedMs)
+{
+    const double ms = proc.getCurrentDelayFrames() * 1000.0 / rate;
+    INFO ("rate " << rate << ": " << proc.getCurrentDelayFrames() << " frames = " << ms << " ms, expected " << expectedMs);
+    REQUIRE (std::abs (ms - expectedMs) <= 0.5 * 1000.0 / rate + 1.0e-9);
+}
+}
+
+TEST_CASE ("a tuned delay keeps its exact time over many sample-rate changes")
+{
+    Fixture f (176400.0);
+    f.proc.setDelayFrames (60000);                         // 340.136 ms
+    const double expectedMs = 60000 * 1000.0 / 176400.0;
+
+    for (double rate : { 48000.0, 88200.0, 96000.0, 44100.0, 192000.0, 48000.0, 176400.0, 44100.0 })
+    {
+        f.proc.prepareToPlay (rate, 512);
+        requireSameTime (f.proc, rate, expectedMs);
+    }
+    REQUIRE (f.proc.getCurrentDelayFrames() == 15000);     // 60000 * 44100 / 176400, exact
+}
+
+TEST_CASE ("a tuned delay survives 44.1 -> 48 -> 44.1 kHz unchanged")
+{
+    Fixture f (44100.0);
+    f.proc.setDelayFrames (39700);
+    f.proc.prepareToPlay (48000.0, 512);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 43211);
+    f.proc.prepareToPlay (44100.0, 512);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 39700);
+}
+
+TEST_CASE ("an untouched delay is recomputed exactly at every sample rate")
+{
+    Fixture f (44100.0);
+    f.set (ids::fraction, 4);                              // 1/16 of 33 1/3 RPM: 4961.25 frames at 44.1 kHz
+    REQUIRE (f.proc.getCurrentDelayFrames() == 4961);
+    for (double rate : { 88200.0, 44100.0, 48000.0, 96000.0, 176400.0, 192000.0, 88200.0 })
+    {
+        f.proc.prepareToPlay (rate, 512);
+        REQUIRE (f.proc.getCurrentDelayFrames()
+                 == pitchdelay::baseDelayFrames (pitchdelay::Speed::Rpm33, 4, rate));
+    }
+    f.proc.prepareToPlay (88200.0, 512);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 9923);      // 9922.5 rounds away from zero, not 9922
+}
+
+TEST_CASE ("choosing speed or fraction after a rate change makes the delay untouched again")
+{
+    Fixture f (44100.0);
+    f.proc.setDelayFrames (39700);                         // tuned
+    f.proc.prepareToPlay (48000.0, 512);
+    f.set (ids::fraction, 0);                              // 1/1: base delay at 48 kHz
+    REQUIRE (f.proc.getCurrentDelayFrames() == 86400);
+    f.proc.prepareToPlay (44100.0, 512);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 79380);     // base again, the tuned value is gone
+}
+
+TEST_CASE ("the tuned flag and the original anchor survive saving and loading")
+{
+    Fixture a (176400.0);
+    a.proc.setDelayFrames (76501);
+    juce::MemoryBlock tuned;
+    a.proc.getStateInformation (tuned);
+
+    Fixture b (48000.0);
+    b.proc.setStateInformation (tuned.getData(), (int) tuned.getSize());
+    REQUIRE (b.proc.getCurrentDelayFrames() == 20817);     // round (76501 * 48000 / 176400) = 20816.99
+    b.proc.prepareToPlay (176400.0, 512);
+    REQUIRE (b.proc.getCurrentDelayFrames() == 76501);     // anchored: exactly the original
+
+    Fixture c (44100.0);
+    c.set (ids::fraction, 4);                              // untouched, 4961 frames
+    juce::MemoryBlock untouched;
+    c.proc.getStateInformation (untouched);
+    Fixture d (88200.0);
+    d.proc.setStateInformation (untouched.getData(), (int) untouched.getSize());
+    REQUIRE (d.proc.getCurrentDelayFrames() == 9923);      // recomputed from speed/fraction, not rescaled
+}
+
+TEST_CASE ("a state of the previous build (frames and rate only) loads as a tuned delay")
+{
+    Fixture f (48000.0);
+    auto s = stateWithDelay (39700, 44100.0);
+    f.proc.setStateInformation (s.getData(), (int) s.getSize());
+    REQUIRE (f.proc.getCurrentDelayFrames() == 43211);
+    f.proc.prepareToPlay (44100.0, 512);
+    REQUIRE (f.proc.getCurrentDelayFrames() == 39700);     // anchored at the stored frames and rate
 }
 
 TEST_CASE ("parameters are not host-automatable except bypass, which is the host bypass")
