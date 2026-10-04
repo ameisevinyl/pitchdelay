@@ -23,9 +23,8 @@ public:
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
 
-    // The editor arrives in Task 4.
-    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
-    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "PitchDelay"; }
     bool acceptsMidi() const override { return false; }

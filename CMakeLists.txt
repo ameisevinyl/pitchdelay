@@ -45,7 +45,7 @@ juce_add_plugin(PitchDelay
     NEEDS_CURL FALSE)
 
 # Sources shared by the plugin and the headless test target.
-set(PITCHDELAY_PROCESSOR_SOURCES plugin/PluginProcessor.cpp)
+set(PITCHDELAY_PROCESSOR_SOURCES plugin/PluginProcessor.cpp plugin/PluginEditor.cpp)
 
 target_sources(PitchDelay PRIVATE
     ${PITCHDELAY_PROCESSOR_SOURCES}
@@ -78,7 +78,8 @@ target_link_libraries(PitchDelay PRIVATE pitchdelay_core)
 juce_add_console_app(pitchdelay_processor_tests PRODUCT_NAME "pitchdelay_processor_tests")
 target_sources(pitchdelay_processor_tests PRIVATE
     ${PITCHDELAY_PROCESSOR_SOURCES}
-    tests/ProcessorTests.cpp)
+    tests/ProcessorTests.cpp
+    tests/EditorTests.cpp)
 target_include_directories(pitchdelay_processor_tests PRIVATE plugin)
 target_compile_definitions(pitchdelay_processor_tests PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
