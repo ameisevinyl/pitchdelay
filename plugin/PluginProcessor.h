@@ -4,24 +4,28 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "DelayLine.h"
+#include "PulseGenerator.h"
 
-class PitchDelayProcessor final : public juce::AudioProcessor
+class PitchDelayProcessor final : public juce::AudioProcessor,
+                                  private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     PitchDelayProcessor();
+    ~PitchDelayProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
-    // Clears the delay buffer so the next start begins with a full delay of silence.
-    void reset() override { delayLine.reset(); }
+    // Clears the delay buffer and the pulse phase so the next start begins from silence.
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
 
-    juce::AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override { return true; }
+    // The editor arrives in Task 4.
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
 
     const juce::String getName() const override { return "PitchDelay"; }
     bool acceptsMidi() const override { return false; }
@@ -40,25 +44,34 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    // Delay the current parameters resolve to, in sample frames. Computed from the live
-    // parameters, so it is right even before any audio has been processed (editor readout,
-    // tail length queried by a host right after restoring state).
-    int getCurrentDelayFrames() const noexcept;
+    // The delay in sample frames (what the editor fields show). Safe to read from any thread.
+    int getCurrentDelayFrames() const noexcept { return delayFrames.load(); }
+    // Sets the delay; clamped to [0, max]. Ignored before prepareToPlay (the rate is unknown).
+    void setDelayFrames (int frames);
 
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-    void updateDelay();
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
+    void applyBaseDelay();
+    void updateDsp();
     bool hostIsStopped() const;
 
     pitchdelay::DelayLine delayLine;
-    std::atomic<double> sampleRate_ { 44100.0 };
+    pitchdelay::PulseGenerator pulse;
+    bool calibrating = false;   // audio thread only: true while the pulse phase is running
+
+    std::atomic<double> sampleRate_ { 0.0 };
+    std::atomic<int> delayFrames { 0 };
+    std::atomic<double> delayRate { 0.0 };     // rate delayFrames refers to; 0 = adopt the next prepare rate
+    std::atomic<bool> delayIsSet { false };    // a delay exists that must be kept (not recomputed) on prepare
+    std::atomic<double> pendingLegacyMs { -1.0 };   // first-release Custom ms waiting for a known rate
 
     juce::AudioParameterChoice* modeParam = nullptr;
-    juce::AudioParameterChoice* unitParam = nullptr;
-    juce::AudioParameterFloat* customMsParam = nullptr;
-    juce::AudioParameterInt* customSamplesParam = nullptr;
+    juce::AudioParameterChoice* fractionParam = nullptr;
+    juce::AudioParameterBool* calibrationParam = nullptr;
+    juce::AudioParameterFloat* calibrationLevelParam = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PitchDelayProcessor)

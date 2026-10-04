@@ -5,30 +5,77 @@
 
 using namespace pitchdelay;
 
+namespace
+{
+const juce::Identifier delayFramesProperty { "delayFrames" };
+const juce::Identifier delayRateProperty { "delayRate" };
+
+struct LegacyCustom
+{
+    bool isCustom = false;
+    bool inMilliseconds = true;
+    double milliseconds = 0.0;
+    int samples = 0;
+};
+
+double paramValue (const juce::ValueTree& tree, const char* id, double fallback)
+{
+    const auto child = tree.getChildWithProperty ("id", id);
+    return child.isValid() ? (double) child.getProperty ("value", fallback) : fallback;
+}
+
+// Reads the first-release Custom settings from a saved state tree (mode 2 = Custom).
+LegacyCustom readLegacyCustom (const juce::ValueTree& tree)
+{
+    LegacyCustom l;
+    l.isCustom = juce::roundToInt (paramValue (tree, ids::mode, 0.0)) == 2;
+    l.inMilliseconds = juce::roundToInt (paramValue (tree, ids::legacyCustomUnit, 0.0)) == 0;
+    l.milliseconds = paramValue (tree, ids::legacyCustomMs, 900.0);
+    l.samples = juce::roundToInt (paramValue (tree, ids::legacyCustomSamples, 0.0));
+    return l;
+}
+
+// Drops the removed parameters so they are not saved again; Custom becomes the first speed.
+void stripLegacy (juce::ValueTree tree, bool wasCustom)
+{
+    for (const char* id : { ids::legacyCustomUnit, ids::legacyCustomMs, ids::legacyCustomSamples })
+    {
+        auto child = tree.getChildWithProperty ("id", id);
+        if (child.isValid())
+            tree.removeChild (child, nullptr);
+    }
+    if (wasCustom)
+    {
+        auto mode = tree.getChildWithProperty ("id", ids::mode);
+        if (mode.isValid())
+            mode.setProperty ("value", 0, nullptr);
+    }
+}
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout PitchDelayProcessor::createLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<AudioParameterChoice> (
-        ParameterID { ids::mode, 1 }, "Mode",
-        StringArray { "33 1/3 RPM", "45 RPM", "Custom" }, 0,
+        ParameterID { ids::mode, 2 }, "Speed",
+        StringArray { "33 1/3 RPM", "45 RPM" }, 0,
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
     layout.add (std::make_unique<AudioParameterChoice> (
-        ParameterID { ids::customUnit, 1 }, "Custom unit",
-        StringArray { "Milliseconds", "Samples" }, 0,
+        ParameterID { ids::fraction, 1 }, "Fraction",
+        StringArray { "1/1", "1/2", "1/4", "1/8", "1/16" }, kDefaultFractionIndex,
         AudioParameterChoiceAttributes().withAutomatable (false)));
 
-    layout.add (std::make_unique<AudioParameterFloat> (
-        ParameterID { ids::customMs, 1 }, "Custom (ms)",
-        NormalisableRange<float> (0.0f, (float) kMaxCustomMs, 0.001f), 900.0f,
-        AudioParameterFloatAttributes().withLabel ("ms").withAutomatable (false)));
+    layout.add (std::make_unique<AudioParameterBool> (
+        ParameterID { ids::calibration, 1 }, "Calibration", false,
+        AudioParameterBoolAttributes().withAutomatable (false)));
 
-    layout.add (std::make_unique<AudioParameterInt> (
-        ParameterID { ids::customSamples, 1 }, "Custom (samples)",
-        0, kMaxCustomSamples, 39690,
-        AudioParameterIntAttributes().withLabel ("samples").withAutomatable (false)));
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ids::calibrationLevel, 1 }, "Calibration level",
+        NormalisableRange<float> (-60.0f, 0.0f, 0.5f), -20.0f,
+        AudioParameterFloatAttributes().withLabel ("dB").withAutomatable (false)));
 
     layout.add (std::make_unique<AudioParameterBool> (
         ParameterID { ids::bypass, 1 }, "Bypass", false));
@@ -43,11 +90,20 @@ PitchDelayProcessor::PitchDelayProcessor()
       apvts (*this, nullptr, "PitchDelayState", createLayout())
 {
     modeParam = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids::mode));
-    unitParam = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids::customUnit));
-    customMsParam = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (ids::customMs));
-    customSamplesParam = dynamic_cast<juce::AudioParameterInt*> (apvts.getParameter (ids::customSamples));
+    fractionParam = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids::fraction));
+    calibrationParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (ids::calibration));
+    calibrationLevelParam = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (ids::calibrationLevel));
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (ids::bypass));
-    jassert (modeParam && unitParam && customMsParam && customSamplesParam && bypassParam);
+    jassert (modeParam && fractionParam && calibrationParam && calibrationLevelParam && bypassParam);
+
+    apvts.addParameterListener (ids::mode, this);
+    apvts.addParameterListener (ids::fraction, this);
+}
+
+PitchDelayProcessor::~PitchDelayProcessor()
+{
+    apvts.removeParameterListener (ids::mode, this);
+    apvts.removeParameterListener (ids::fraction, this);
 }
 
 bool PitchDelayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -58,32 +114,85 @@ bool PitchDelayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     return out == layouts.getMainInputChannelSet();
 }
 
+void PitchDelayProcessor::reset()
+{
+    delayLine.reset();
+    pulse.reset();
+    calibrating = false;
+}
+
+void PitchDelayProcessor::applyBaseDelay()
+{
+    const double sr = sampleRate_.load();
+    if (sr <= 0.0)
+        return;
+    delayFrames.store (baseDelayFrames (static_cast<Speed> (modeParam->getIndex()),
+                                        fractionParam->getIndex(), sr));
+    delayRate.store (sr);
+    delayIsSet.store (true);
+    pendingLegacyMs.store (-1.0);
+}
+
+void PitchDelayProcessor::parameterChanged (const juce::String&, float)
+{
+    // Speed or Fraction changed: the delay follows them (overwriting any fine-tuning).
+    applyBaseDelay();
+}
+
+void PitchDelayProcessor::setDelayFrames (int frames)
+{
+    const double sr = sampleRate_.load();
+    if (sr <= 0.0)
+        return;
+    delayFrames.store (clampFrames (frames, sr));
+    delayRate.store (sr);
+    delayIsSet.store (true);
+    pendingLegacyMs.store (-1.0);
+}
+
 void PitchDelayProcessor::prepareToPlay (double sampleRate, int)
 {
     sampleRate_.store (sampleRate);
+
+    const double legacyMs = pendingLegacyMs.load();
+    if (legacyMs >= 0.0)
+    {
+        delayFrames.store (clampFrames (framesForMilliseconds (legacyMs, sampleRate), sampleRate));
+        delayRate.store (sampleRate);
+        delayIsSet.store (true);
+        pendingLegacyMs.store (-1.0);
+    }
+    else if (delayIsSet.load())
+    {
+        const double from = delayRate.load();
+        delayFrames.store (from > 0.0 ? rescaleFrames (delayFrames.load(), from, sampleRate)
+                                      : clampFrames (delayFrames.load(), sampleRate));
+        delayRate.store (sampleRate);
+    }
+    else
+    {
+        applyBaseDelay();
+    }
+
     const int channels = std::max ({ 1, getTotalNumInputChannels(), getTotalNumOutputChannels() });
     delayLine.prepare (channels, maxDelayFrames (sampleRate));   // allocates and clears
-    updateDelay();
-}
-
-int PitchDelayProcessor::getCurrentDelayFrames() const noexcept
-{
-    return computeDelayFrames (static_cast<Mode> (modeParam->getIndex()),
-                               static_cast<CustomUnit> (unitParam->getIndex()),
-                               (double) customMsParam->get(),
-                               customSamplesParam->get(),
-                               sampleRate_.load());
-}
-
-void PitchDelayProcessor::updateDelay()
-{
-    delayLine.setDelayFrames (getCurrentDelayFrames());          // hard jump when it changes
+    pulse.prepare (sampleRate);
+    calibrating = false;
+    updateDsp();
 }
 
 double PitchDelayProcessor::getTailLengthSeconds() const
 {
     const double sr = sampleRate_.load();
-    return sr > 0.0 ? (double) getCurrentDelayFrames() / sr : 0.0;
+    return sr > 0.0 ? static_cast<double> (getCurrentDelayFrames()) / sr : 0.0;
+}
+
+void PitchDelayProcessor::updateDsp()
+{
+    const int frames = delayFrames.load();
+    delayLine.setDelayFrames (frames);
+    pulse.setPeriodFrames (frames);
+    pulse.setLevelDb (calibrationLevelParam->get());
 }
 
 bool PitchDelayProcessor::hostIsStopped() const
@@ -107,29 +216,56 @@ void PitchDelayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     {
         // Nothing may survive a stop: the next start must begin with a full delay of silence.
         delayLine.reset();
+        pulse.reset();
+        calibrating = false;
         buffer.clear();
         return;
     }
-    updateDelay();
-    delayLine.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
+
+    updateDsp();
+    const int numChannels = buffer.getNumChannels();
+    const int numSamples = buffer.getNumSamples();
+
+    if (calibrationParam->get() && numChannels > 0)
+    {
+        if (! calibrating)
+        {
+            pulse.reset();   // switched on: the first pulse starts at this block's first frame
+            calibrating = true;
+        }
+        // Keep recording the incoming audio so leaving calibration is seamless.
+        delayLine.record (buffer.getArrayOfReadPointers(), numChannels, numSamples);
+        float* first = buffer.getWritePointer (0);
+        pulse.generate (first, numSamples);
+        for (int c = 1; c < numChannels; ++c)
+            std::copy (first, first + numSamples, buffer.getWritePointer (c));
+        return;
+    }
+
+    calibrating = false;
+    delayLine.process (buffer.getArrayOfWritePointers(), numChannels, numSamples);
 }
 
 void PitchDelayProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     // Output stays the input (undelayed); keep recording so un-bypass is seamless,
-    // except while the host is stopped, when the buffer is wiped instead.
+    // except while the host is stopped, when the buffer and the pulse phase are wiped instead.
     if (hostIsStopped())
     {
         delayLine.reset();
+        pulse.reset();
+        calibrating = false;
         return;
     }
-    updateDelay();
+    updateDsp();
     delayLine.record (buffer.getArrayOfReadPointers(), buffer.getNumChannels(), buffer.getNumSamples());
 }
 
 void PitchDelayProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    const auto state = apvts.copyState();
+    auto state = apvts.copyState();
+    state.setProperty (delayFramesProperty, delayFrames.load(), nullptr);
+    state.setProperty (delayRateProperty, delayRate.load(), nullptr);
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -138,7 +274,61 @@ void PitchDelayProcessor::setStateInformation (const void* data, int sizeInBytes
 {
     if (data == nullptr || sizeInBytes <= 0)
         return;
-    if (const auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    const auto xml = getXmlFromBinary (data, sizeInBytes);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+        return;
+
+    auto tree = juce::ValueTree::fromXml (*xml);
+
+    // Read what we need before the tree is handed to the parameters.
+    const bool hasDelay = tree.hasProperty (delayFramesProperty) && tree.hasProperty (delayRateProperty);
+    const int storedFrames = juce::jmax (0, (int) tree.getProperty (delayFramesProperty, 0));
+    const double storedRate = (double) tree.getProperty (delayRateProperty, 0.0);
+    const auto legacy = readLegacyCustom (tree);
+    stripLegacy (tree, legacy.isCustom);
+
+    apvts.replaceState (tree);   // may run the Speed/Fraction listener; resolved explicitly below
+
+    const double sr = sampleRate_.load();
+    if (hasDelay && storedRate > 0.0)
+    {
+        pendingLegacyMs.store (-1.0);
+        delayIsSet.store (true);
+        if (sr > 0.0)
+        {
+            delayFrames.store (rescaleFrames (storedFrames, storedRate, sr));
+            delayRate.store (sr);
+        }
+        else
+        {
+            delayFrames.store (storedFrames);
+            delayRate.store (storedRate);   // rescaled in prepareToPlay
+        }
+    }
+    else if (legacy.isCustom && legacy.inMilliseconds)
+    {
+        if (sr > 0.0)
+        {
+            delayFrames.store (clampFrames (framesForMilliseconds (legacy.milliseconds, sr), sr));
+            delayRate.store (sr);
+            delayIsSet.store (true);
+            pendingLegacyMs.store (-1.0);
+        }
+        else
+        {
+            pendingLegacyMs.store (juce::jmax (0.0, legacy.milliseconds));   // resolved in prepareToPlay
+        }
+    }
+    else if (legacy.isCustom)
+    {
+        pendingLegacyMs.store (-1.0);
+        delayIsSet.store (true);
+        delayFrames.store (sr > 0.0 ? clampFrames (legacy.samples, sr) : juce::jmax (0, legacy.samples));
+        delayRate.store (sr);   // 0 before prepare: kept as is when the rate becomes known
+    }
+    else
+    {
+        delayIsSet.store (false);
+        applyBaseDelay();   // no-op before prepareToPlay, which then computes it
+    }
 }
