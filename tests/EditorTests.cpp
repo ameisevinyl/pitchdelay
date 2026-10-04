@@ -161,6 +161,98 @@ TEST_CASE ("the editor paints its own opaque background so the light label text 
     REQUIRE (pixel.getARGB() == expected.getARGB());
 }
 
+// ---- keys belong to the host's transport ------------------------------------------
+
+namespace
+{
+void collectDescendants (juce::Component& c, std::vector<juce::Component*>& out)
+{
+    out.push_back (&c);
+    for (auto* child : c.getChildren())
+        collectDescendants (*child, out);
+}
+
+juce::KeyPress keyOf (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return juce::KeyPress ((int) c, mods, c); }
+}
+
+TEST_CASE ("no control of the editor takes keyboard focus, so Space and Return reach the host")
+{
+    EditorFixture f;
+    std::vector<juce::Component*> all;
+    collectDescendants (*f.editor, all);
+    REQUIRE (all.size() > 10);   // the traversal really found the controls
+    for (auto* c : all)
+    {
+        INFO ("component '" << c->getName() << "' (" << typeid (*c).name() << ")");
+        REQUIRE_FALSE (c->getWantsKeyboardFocus());
+        REQUIRE_FALSE (c->getMouseClickGrabsKeyboardFocus());
+    }
+}
+
+TEST_CASE ("an active number field uses only the keys needed for typing a number")
+{
+    NumberEntryEditor ed;
+    ed.setText ("123", false);
+
+    // keys that edit or confirm the number
+    for (auto key : { keyOf ('0'), keyOf ('7'), keyOf ('9'), keyOf ('.'), keyOf (','),
+                      juce::KeyPress (juce::KeyPress::backspaceKey), juce::KeyPress (juce::KeyPress::deleteKey),
+                      juce::KeyPress (juce::KeyPress::leftKey), juce::KeyPress (juce::KeyPress::rightKey),
+                      juce::KeyPress (juce::KeyPress::homeKey), juce::KeyPress (juce::KeyPress::endKey),
+                      juce::KeyPress (juce::KeyPress::returnKey), juce::KeyPress (juce::KeyPress::escapeKey),
+                      keyOf ('a', juce::ModifierKeys::commandModifier), keyOf ('c', juce::ModifierKeys::commandModifier),
+                      keyOf ('v', juce::ModifierKeys::commandModifier), keyOf ('x', juce::ModifierKeys::commandModifier),
+                      keyOf ('z', juce::ModifierKeys::commandModifier) })
+    {
+        INFO ("key code " << key.getKeyCode() << " char " << (int) key.getTextCharacter());
+        REQUIRE (ed.keyPressed (key));
+    }
+}
+
+TEST_CASE ("an active number field hands every other key to the host")
+{
+    NumberEntryEditor ed;
+    ed.setText ("123", false);
+
+    for (auto key : { keyOf (' '), keyOf ('a'), keyOf ('r'), keyOf ('c'), keyOf ('k'), keyOf ('-'), keyOf ('+'),
+                      keyOf ('*'), keyOf ('/'), keyOf ('['), keyOf (']'),
+                      juce::KeyPress (juce::KeyPress::upKey), juce::KeyPress (juce::KeyPress::downKey),
+                      juce::KeyPress (juce::KeyPress::F1Key), juce::KeyPress (juce::KeyPress::F5Key),
+                      keyOf ('s', juce::ModifierKeys::commandModifier),
+                      keyOf ('q', juce::ModifierKeys::commandModifier),
+                      keyOf ('5', juce::ModifierKeys::commandModifier),
+                      keyOf (' ', juce::ModifierKeys::shiftModifier),
+                      keyOf ('5', juce::ModifierKeys::altModifier) })
+    {
+        INFO ("key code " << key.getKeyCode() << " char " << (int) key.getTextCharacter()
+              << " mods " << key.getModifiers().getRawFlags());
+        REQUIRE_FALSE (ed.keyPressed (key));
+    }
+    REQUIRE (ed.getText() == "123");   // none of them changed the text
+}
+
+TEST_CASE ("typing into an active number field edits the number and nothing else")
+{
+    NumberEntryEditor ed;
+    ed.setText ("", false);
+    for (auto c : juce::String ("4 3a2.5-"))
+        ed.keyPressed (keyOf (c));
+    REQUIRE (ed.getText() == "432.5");   // space, letters and '-' were handed on, not inserted
+}
+
+TEST_CASE ("the number fields create the key-filtering editor and only accept number characters")
+{
+    EditorFixture f;
+    auto& label = f.editor->getSamplesField().getLabel();
+    label.showEditor();
+    auto* ed = dynamic_cast<NumberEntryEditor*> (label.getCurrentTextEditor());
+    REQUIRE (ed != nullptr);
+    ed->setText ("", false);
+    ed->insertTextAtCaret ("a5 b,6.x");           // pasted text is filtered as well
+    REQUIRE (ed->getText() == "5,6.");
+    label.hideEditor (true);
+}
+
 // Optional: renders the editor to PNG files in $PITCHDELAY_SNAPSHOT_DIR for a visual check
 // without opening a window. Does nothing when the variable is not set.
 TEST_CASE ("editor snapshot (only when PITCHDELAY_SNAPSHOT_DIR is set)")

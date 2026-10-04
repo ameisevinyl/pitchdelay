@@ -21,6 +21,16 @@ std::optional<long long> parseWholeNumber (const juce::String& text)
     return std::min (t.getLargeIntValue(), kHugeNumber);
 }
 
+// Keys are reserved for the host's transport: no control may take keyboard focus, and clicking a
+// control must not grab it. (Text editors are created on demand and take focus only while typing.)
+void releaseKeyboardFocus (juce::Component& c)
+{
+    c.setWantsKeyboardFocus (false);
+    c.setMouseClickGrabsKeyboardFocus (false);
+    for (auto* child : c.getChildren())
+        releaseKeyboardFocus (*child);
+}
+
 // A non-negative decimal with '.' or ',' as separator.
 std::optional<double> parseDecimal (const juce::String& text)
 {
@@ -29,6 +39,43 @@ std::optional<double> parseDecimal (const juce::String& text)
         return std::nullopt;
     return t.getDoubleValue();
 }
+}
+
+NumberEntryEditor::NumberEntryEditor()
+{
+    setInputRestrictions (12, "0123456789.,");
+}
+
+bool NumberEntryEditor::keyPressed (const juce::KeyPress& key)
+{
+    const auto mods = key.getModifiers();
+    const int code = key.getKeyCode();
+
+    const bool editsOrConfirms = code == juce::KeyPress::returnKey || code == juce::KeyPress::escapeKey
+                                 || code == juce::KeyPress::tabKey || code == juce::KeyPress::backspaceKey
+                                 || code == juce::KeyPress::deleteKey || code == juce::KeyPress::leftKey
+                                 || code == juce::KeyPress::rightKey || code == juce::KeyPress::homeKey
+                                 || code == juce::KeyPress::endKey;
+
+    const auto character = key.getTextCharacter();
+    const bool plain = ! mods.isCommandDown() && ! mods.isCtrlDown() && ! mods.isAltDown();
+    const bool numberCharacter = plain && ((character >= '0' && character <= '9') || character == '.' || character == ',');
+
+    // Select all / copy / paste / cut / undo only: other Cmd shortcuts (save, quit ...) belong to the host.
+    const bool clipboard = mods.isCommandDown() && ! mods.isAltDown()
+                           && (character == 'a' || character == 'c' || character == 'v' || character == 'x'
+                               || character == 'z' || character == 'A' || character == 'C' || character == 'V'
+                               || character == 'X' || character == 'Z');
+
+    if (editsOrConfirms || numberCharacter || clipboard)
+        return juce::TextEditor::keyPressed (key);
+
+    return false;   // not ours: the host gets it (Space = play/stop, letters, F-keys, ...)
+}
+
+juce::TextEditor* NumberLabel::createEditorComponent()
+{
+    return new NumberEntryEditor();
 }
 
 StepField::StepField()
@@ -75,7 +122,7 @@ PitchDelayEditor::PitchDelayEditor (PitchDelayProcessor& p)
     fractionBox.addItemList ({ "1/1", "1/2", "1/4", "1/8", "1/16" }, 1);
 
     levelSlider.setSliderStyle (juce::Slider::IncDecButtons);
-    levelSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 80, 24);
+    levelSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, true, 80, 24);   // display only: never holds keys
     levelSlider.setTextValueSuffix (" dB");
 
     speedAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
@@ -117,6 +164,7 @@ PitchDelayEditor::PitchDelayEditor (PitchDelayProcessor& p)
         addAndMakeVisible (c);
 
     setSize (460, 360);
+    releaseKeyboardFocus (*this);   // Space, Return and all other keys always reach the host
     updateFromProcessor();
     startTimerHz (15);
 }

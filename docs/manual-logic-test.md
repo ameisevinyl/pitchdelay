@@ -43,3 +43,13 @@ Record the Logic version and results in the PR / commit message.
 4. Choose another Fraction: both fields jump to the new base delay.
 5. Save the project, reopen it: the fine-tuned delay is still there. Open a project saved with the
    previous plugin version (Custom mode): it keeps its old delay.
+
+## Keys belong to Logic
+
+1. Click each control in turn (Speed, Fraction, Calibration, the ▲▼ and ± buttons), and after each
+   click press Space and Return: Logic must start/stop playback every time.
+2. Click into the samples field and type `4`, `3`: the digits appear. Press Space: Logic starts or
+   stops playback and the field is unchanged. Press Return: the value is committed (and, as the
+   one exception, Logic does not receive that Return). Press Space again: playback toggles.
+3. Press other Logic key commands (for example `R` for record, `C` for the metronome) while a field
+   is being edited: Logic reacts, the field does not change.

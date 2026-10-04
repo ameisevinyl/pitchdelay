@@ -5,6 +5,23 @@
 
 #include "PluginProcessor.h"
 
+// The text editor of a number field. While it is active it uses only the keys needed to type and
+// confirm a number; every other key (Space, letters, Cmd shortcuts, F-keys ...) is declined so it
+// reaches the host and its transport.
+class NumberEntryEditor final : public juce::TextEditor
+{
+public:
+    NumberEntryEditor();
+    bool keyPressed (const juce::KeyPress&) override;
+};
+
+// A label whose editor is a NumberEntryEditor that only accepts digits, '.' and ','.
+class NumberLabel final : public juce::Label
+{
+public:
+    juce::TextEditor* createEditorComponent() override;
+};
+
 // A number box with ▲/▼ buttons. Typing goes through the label; the buttons repeat while held.
 class StepField final : public juce::Component
 {
@@ -24,7 +41,7 @@ public:
     void resized() override;
 
 private:
-    juce::Label field;
+    NumberLabel field;
     juce::TextButton up, down;
 };
 

@@ -181,6 +181,21 @@ Default JUCE look. Controls:
 - Readout such as `Delay: 43200 frames = 900.000 ms @ 48.0 kHz`, `Reported latency: 0`, and
   `CALIBRATION` while that mode is on.
 
+## Keyboard
+
+Keys belong to the host's transport (Space = play/stop, Return, letters, F-keys, Cmd shortcuts ...).
+
+- No control in the editor takes keyboard focus, and clicking a control does not grab it: the
+  Speed and Fraction selectors, the Calibration check box and all ▲/▼ and ± buttons. The editor
+  window itself handles no keys.
+- The calibration level control shows its value read-only; it is changed with its ± buttons.
+- A samples/milliseconds field takes keys only while the user is typing in it, and then only the
+  keys needed for a number: digits, `.` and `,`, Backspace/Delete, Left/Right/Home/End, select-all /
+  copy / paste / cut / undo (Cmd), Tab, **Return (commits)** and Escape (cancels). Clicking
+  elsewhere also commits. Every other key, including Space, is declined so the host receives it.
+  Return is the one exception to "keys always go to the host", because typed values need a way to
+  be confirmed.
+
 ## Build
 
 CMake, JUCE pinned. Targets AU, VST3, Standalone. Post-build copy to
@@ -208,7 +223,8 @@ CMake, JUCE pinned. Targets AU, VST3, Standalone. Post-build copy to
 4. Manual Logic tests: (a) split a test signal into plain and plugin paths, bounce
    both, cross-correlate; offset must be exactly N frames, confirming Logic
    does not compensate; (b) stop/restart gives a full delay of silence; (c) calibration
-   pulses at the expected spacing.
+   pulses at the expected spacing; (d) clicking every control and then pressing Space and Return
+   still starts and stops the host transport.
 
 CI: GitHub Actions macOS job runs build + tests 1–3.
 
