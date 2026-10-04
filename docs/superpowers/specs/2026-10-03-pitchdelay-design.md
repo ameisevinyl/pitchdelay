@@ -183,8 +183,9 @@ CMake, JUCE pinned. Targets AU, VST3, Standalone. Post-build copy to
    patterns); block sizes 1, 63, 512 and larger than N; N = 0, 1, max; hard
    jump on delay change. DelaySettings: frame counts for all five fractions at six sample
    rates for both speeds (including the rounded cases), millisecond rounding, rate
-   rescale exactness. PulseGenerator: onsets at exactly 0, N, 2N …; peak amplitude
-   `10^(level/20)`; burst length 5 ms; truncation when N < L; reset restarts the phase;
+   rescale exactness. PulseGenerator: onsets at exactly 0, N, 2N …; peak between
+   0.95x and 1.0x of the linear level `10^(level/20)` (the Hann window and the sine phase keep the
+   sampled peak just below it); burst length 5 ms; truncation when N < L; reset restarts the phase;
    identical settings give identical output.
 2. Processor tests: latency 0; bypass passes undelayed; correct delayed audio
    on un-bypass; parameter save/load; stop wipes the buffer; Mode/Fraction change
