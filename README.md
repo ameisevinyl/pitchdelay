@@ -29,5 +29,7 @@ Plugins are copied to `~/Library/Audio/Plug-Ins/` unless `-DPITCHDELAY_INSTALL_A
 `-DPITCHDELAY_UNIVERSAL=ON` builds arm64 + x86_64.
 
 ## Licence
-AGPLv3 (see `LICENSE`). Built with [JUCE](https://juce.com) (AGPLv3 / commercial).
+Copyright (C) 2026 ameisevinyl. Licensed under the GNU Affero General Public License v3
+(`AGPL-3.0-only`, see `LICENSE`); every source file carries an SPDX header.
+Built with [JUCE](https://juce.com) (AGPLv3 / commercial licence).
 VST is a trademark of Steinberg Media Technologies GmbH.

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 ameisevinyl
 # Validate the built AU and VST3 with pluginval, and the AU with auval.
 # Usage: scripts/validate.sh [build-dir]    (env: PLUGINVAL, CI)
 set -euo pipefail

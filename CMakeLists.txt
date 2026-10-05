@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 ameisevinyl
+
 cmake_minimum_required(VERSION 3.22)
 
 # macOS settings must precede project().

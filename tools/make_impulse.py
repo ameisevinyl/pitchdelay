@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 ameisevinyl
 """Write a 5 s, 48 kHz mono 32-bit-float WAV with a single impulse at frame 48000."""
 import struct
 import sys
