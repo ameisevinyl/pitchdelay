@@ -1,0 +1,61 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+    branches: [chore/readme-release]   # TEMPORARY: dry run of the packaging, removed before merging
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="$(sed -n 's/^project(PitchDelay VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)"
+          [[ -n "$VERSION" ]] || { echo "version not found in CMakeLists.txt" >&2; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match the CMakeLists.txt version $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Install tools
+        run: brew install ninja cmake
+
+      - name: Configure (universal: Intel + Apple Silicon)
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DPITCHDELAY_UNIVERSAL=ON -DPITCHDELAY_INSTALL_AFTER_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: scripts/package-macos.sh build "${{ steps.version.outputs.version }}"
+
+      - name: Upload the zip as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PitchDelay-${{ steps.version.outputs.version }}-macOS
+          path: dist/*
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          PRE=()
+          [[ "$VERSION" == 0.* ]] && PRE=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "PitchDelay $VERSION" --generate-notes --verify-tag ${PRE[@]+"${PRE[@]}"}

@@ -1,0 +1,16 @@
+PitchDelay for macOS (Intel and Apple Silicon)
+
+1. Copy PitchDelay.component to ~/Library/Audio/Plug-Ins/Components/
+   and/or PitchDelay.vst3    to ~/Library/Audio/Plug-Ins/VST3/
+
+2. The plugin is signed ad hoc, not notarized. Remove the download quarantine:
+
+     xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/PitchDelay.component
+     xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/PitchDelay.vst3
+
+3. Logic Pro: quit Logic. If PitchDelay does not show up, open
+   Settings > Plug-in Manager, select PitchDelay and click "Reset & Rescan Selection".
+
+PitchDelay.app is a standalone version for quick testing.
+
+Licence: AGPL-3.0-only (see LICENSE). Source: https://github.com/ameisevinyl/pitchdelay

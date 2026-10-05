@@ -15,6 +15,13 @@ revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM ([background](https://flokason.c
 Route the track twice: one path untouched to the pitch output, one path through PitchDelay to the drive
 output. Choose speed and fraction, fine-tune if needed. All keys stay with the host's transport.
 
+## Install (macOS, Intel and Apple Silicon)
+
+Download the zip from [Releases](https://github.com/ameisevinyl/pitchdelay/releases), copy
+`PitchDelay.component` to `~/Library/Audio/Plug-Ins/Components/` and/or `PitchDelay.vst3` to
+`~/Library/Audio/Plug-Ins/VST3/`, then remove the quarantine flag (the build is signed ad hoc, not
+notarized): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/PitchDelay.component`.
+
 ## Build
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

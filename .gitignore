@@ -5,3 +5,5 @@ build/
 .vscode/
 .superpowers/
 .cache/
+dist/
+build-universal/
