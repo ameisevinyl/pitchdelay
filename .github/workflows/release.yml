@@ -29,7 +29,7 @@ jobs:
       - name: Install tools
         run: brew install ninja cmake
 
-      - name: Configure (universal: Intel + Apple Silicon)
+      - name: "Configure (universal build for Intel and Apple Silicon)"
         run: >
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DPITCHDELAY_UNIVERSAL=ON -DPITCHDELAY_INSTALL_AFTER_BUILD=OFF
