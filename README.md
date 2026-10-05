@@ -1,35 +1,32 @@
 # pitchdelay
 
-An exact-frame, 100% wet, bit-transparent delay plugin (AU / VST3 / Standalone) for the
-drive channel of a record-cutting lathe: the drive path is delayed by a half lathe
-revolution (0.9 s at 33⅓ RPM, 2/3 s at 45 RPM) relative to the undelayed pitch (preview)
-path. The plugin reports **0 latency**, so the DAW does not compensate; the delayed path is
-late by exactly N sample frames.
+An exact delay plugin (AU / VST3) for the drive channel of a record-cutting lathe. It delays audio by a
+fraction of a platter revolution, so the pitch control can look ahead of the cut. Default is half a
+revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM ([background](https://flokason.ch/pitch13_manual.html)).
 
-Background: https://flokason.ch/pitch13_manual.html
-Design: `docs/superpowers/specs/2026-10-03-pitchdelay-design.md`
+- 100 % wet and bit-identical, delayed by a whole number of sample frames
+- Reports **0 latency**: the DAW does not compensate, the delayed path is late by exactly N frames
+- 33⅓ / 45 RPM, fraction 1/1 … 1/16 of a revolution, fine-tuning in samples or milliseconds
+- **Calibration**: a 1 kHz tone burst every N frames, for measuring the real platter speed
+- Stopping the transport clears the buffer; bypass passes the audio through undelayed
 
-## Use (Logic / any DAW)
-Route the track twice: one path untouched → pitch output; one path through PitchDelay → drive
-output. Pick the speed (33⅓ or 45 RPM) and the fraction of a revolution (1/2 by default; 1/1 … 1/16 for
-testing). Fine-tune the delay in samples or milliseconds in the two fields. **Calibration** replaces
-the audio with a 1 kHz tone burst every N frames (N = the delay, default level −20 dB) for measuring
-the real platter speed. Bypass passes audio undelayed; a stopped transport silences the output and
-clears the buffer.
+## Use
+
+Route the track twice: one path untouched to the pitch output, one path through PitchDelay to the drive
+output. Choose speed and fraction, fine-tune if needed. All keys stay with the host's transport.
 
 ## Build
-Requires Xcode command line tools, CMake ≥ 3.22, Ninja.
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build build
     ctest --test-dir build --output-on-failure
-    scripts/validate.sh build
+    scripts/validate.sh build        # pluginval + auval
 
-Plugins are copied to `~/Library/Audio/Plug-Ins/` unless `-DPITCHDELAY_INSTALL_AFTER_BUILD=OFF`.
-`-DPITCHDELAY_UNIVERSAL=ON` builds arm64 + x86_64.
+Needs Xcode command line tools, CMake ≥ 3.22 and Ninja. Plugins are copied to
+`~/Library/Audio/Plug-Ins/` unless `-DPITCHDELAY_INSTALL_AFTER_BUILD=OFF`;
+`-DPITCHDELAY_UNIVERSAL=ON` builds for Intel and Apple Silicon.
 
 ## Licence
-Copyright (C) 2026 ameisevinyl. Licensed under the GNU Affero General Public License v3
-(`AGPL-3.0-only`, see `LICENSE`); every source file carries an SPDX header.
-Built with [JUCE](https://juce.com) (AGPLv3 / commercial licence).
+
+Copyright (C) 2026 ameisevinyl. [AGPL-3.0-only](LICENSE), built with [JUCE](https://juce.com) (AGPLv3).
 VST is a trademark of Steinberg Media Technologies GmbH.
