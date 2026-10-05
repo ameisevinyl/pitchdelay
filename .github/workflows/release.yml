@@ -3,7 +3,6 @@ name: release
 on:
   push:
     tags: ['v*']
-    branches: [chore/readme-release]   # TEMPORARY: dry run of the packaging, removed before merging
   workflow_dispatch:
 
 permissions:
