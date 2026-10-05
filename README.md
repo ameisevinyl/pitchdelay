@@ -3,11 +3,8 @@
 An exact-frame, 100% wet, bit-transparent delay plugin (AU / VST3 / Standalone) for the
 drive channel of a record-cutting lathe: the drive path is delayed by a half lathe
 revolution (0.9 s at 33⅓ RPM, 2/3 s at 45 RPM) relative to the undelayed pitch (preview)
-path. The plugin reports **0 latency**, so the DAW does not compensate; the delayed path is
+path. The plugin reports 0 latency, so the DAW does not compensate; the delayed path is
 late by exactly N sample frames.
-
-Background: https://flokason.ch/pitch13_manual.html
-Design: `docs/superpowers/specs/2026-10-03-pitchdelay-design.md`
 
 ## Use (Logic / any DAW)
 Route the track twice: one path untouched → pitch output; one path through PitchDelay → drive
