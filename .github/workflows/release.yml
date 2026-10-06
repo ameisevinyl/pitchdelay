@@ -3,17 +3,19 @@ name: release
 on:
   push:
     tags: ['v*']
+    branches: [feature/windows-linux]   # TEMPORARY: dry run of the packaging, removed before merging
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  macos:
-    runs-on: macos-latest
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-
       - name: Resolve version
         id: version
         run: |
@@ -25,35 +27,90 @@ jobs:
             exit 1
           fi
 
+  macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
       - name: Install tools
         run: brew install ninja cmake
-
       - name: "Configure (universal build for Intel and Apple Silicon)"
         run: >
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DPITCHDELAY_UNIVERSAL=ON -DPITCHDELAY_INSTALL_AFTER_BUILD=OFF
-
       - name: Build
         run: cmake --build build
-
       - name: Tests
         run: ctest --test-dir build --output-on-failure
-
       - name: Package
-        run: scripts/package-macos.sh build "${{ steps.version.outputs.version }}"
-
-      - name: Upload the zip as an artifact
-        uses: actions/upload-artifact@v7
+        run: scripts/package-macos.sh build "${{ needs.version.outputs.version }}"
+      - uses: actions/upload-artifact@v7
         with:
-          name: PitchDelay-${{ steps.version.outputs.version }}-macOS
+          name: dist-macos
           path: dist/*
 
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libxi-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPITCHDELAY_INSTALL_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Tests
+        run: xvfb-run -a ctest --test-dir build --output-on-failure
+      - name: Package
+        run: scripts/package-portable.sh build "${{ needs.version.outputs.version }}" linux-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-linux
+          path: dist/*
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DPITCHDELAY_INSTALL_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package
+        run: scripts/package-portable.sh build "${{ needs.version.outputs.version }}" windows-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-windows
+          path: dist/*
+
+  publish:
+    needs: [version, macos, linux, windows]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
       - name: Publish the release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
+          ls -l dist
           PRE=()
           [[ "$VERSION" == 0.* ]] && PRE=(--prerelease)
           gh release create "$GITHUB_REF_NAME" dist/* \
