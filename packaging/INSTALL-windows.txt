@@ -1,0 +1,10 @@
+PitchDelay for Windows (x64)
+
+1. Copy the PitchDelay.vst3 folder to C:\Program Files\Common Files\VST3\
+2. Rescan plugins in your DAW.
+
+The build is not code-signed, so Windows SmartScreen may warn when you open the zip or the
+standalone PitchDelay.exe: choose "More info" > "Run anyway". PitchDelay.exe is a standalone
+version for quick testing.
+
+Licence: AGPL-3.0-only (see LICENSE). Source: https://github.com/ameisevinyl/pitchdelay

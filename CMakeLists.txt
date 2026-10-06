@@ -82,6 +82,8 @@ target_link_libraries(PitchDelay
 add_library(pitchdelay_core STATIC core/DelayLine.cpp core/DelaySettings.cpp core/PulseGenerator.cpp)
 target_include_directories(pitchdelay_core PUBLIC core)
 target_compile_features(pitchdelay_core PUBLIC cxx_std_17)
+# The core is linked into the plugin's shared object; Linux requires position-independent code for that.
+set_target_properties(pitchdelay_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 enable_testing()
 add_executable(pitchdelay_core_tests
