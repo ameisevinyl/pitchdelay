@@ -28,7 +28,7 @@ jobs:
         run: scripts/validate.sh build
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # oldest supported image: the binaries then run on glibc 2.35 and newer
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies

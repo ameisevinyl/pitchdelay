@@ -1,6 +1,6 @@
 # pitchdelay
 
-An exact delay plugin (AU / VST3) for the drive channel of a record-cutting lathe. It delays audio by a
+An exact delay plugin (AU on macOS, VST3 everywhere) for the drive channel of a record-cutting lathe. It delays audio by a
 fraction of a platter revolution, so the pitch control can look ahead of the cut. Default is half a
 revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM.
 
@@ -15,12 +15,17 @@ revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM.
 Route the track twice: one path untouched to the pitch output, one path through PitchDelay to the drive
 output. Choose speed and fraction, fine-tune if needed. All keys stay with the host's transport.
 
-## Install (macOS, Intel and Apple Silicon)
+## Install
 
-Download the zip from [Releases](https://github.com/ameisevinyl/pitchdelay/releases), copy
-`PitchDelay.component` to `~/Library/Audio/Plug-Ins/Components/` and/or `PitchDelay.vst3` to
-`~/Library/Audio/Plug-Ins/VST3/`, then remove the quarantine flag (the build is signed ad hoc, not
-notarized): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/PitchDelay.component`.
+Download the zip for your system from [Releases](https://github.com/ameisevinyl/pitchdelay/releases).
+
+- **macOS** (Intel and Apple Silicon): copy `PitchDelay.component` to `~/Library/Audio/Plug-Ins/Components/`
+  and/or `PitchDelay.vst3` to `~/Library/Audio/Plug-Ins/VST3/`, then remove the quarantine flag (the
+  build is signed ad hoc, not notarized), e.g.
+  `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/PitchDelay.component`.
+- **Windows** (x64): copy `PitchDelay.vst3` to `C:\Program Files\Common Files\VST3\`. The build is not
+  code-signed, so SmartScreen may warn.
+- **Linux** (x86_64, glibc 2.35 or newer): copy `PitchDelay.vst3` to `~/.vst3/`.
 
 ## Build
 
@@ -29,8 +34,9 @@ notarized): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/
     ctest --test-dir build --output-on-failure
     scripts/validate.sh build        # pluginval + auval
 
-Needs Xcode command line tools, CMake ≥ 3.22 and Ninja. Plugins are copied to
-`~/Library/Audio/Plug-Ins/` unless `-DPITCHDELAY_INSTALL_AFTER_BUILD=OFF`;
+Needs CMake ≥ 3.22 and Ninja, plus Xcode command line tools (macOS), Visual Studio (Windows, use
+`-A x64` and `--config Release`) or the system libraries listed in `.github/workflows/ci.yml` (Linux).
+Plugins are copied to the system plugin folder unless `-DPITCHDELAY_INSTALL_AFTER_BUILD=OFF`;
 `-DPITCHDELAY_UNIVERSAL=ON` builds for Intel and Apple Silicon.
 
 ## Licence

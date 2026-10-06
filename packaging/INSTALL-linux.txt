@@ -3,7 +3,10 @@ PitchDelay for Linux (x86_64)
 1. Copy the PitchDelay.vst3 folder to ~/.vst3/   (or /usr/lib/vst3/ for all users).
 2. Rescan plugins in your DAW.
 
-PitchDelay (the executable) is a standalone version for quick testing.
-It needs the system libraries ALSA, FreeType, fontconfig and X11, which any desktop distribution has.
+Built on Ubuntu 22.04: runs on glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+ ...).
+The plugin needs these system libraries, which a desktop installation normally has:
+  libX11, libXcursor, libXext, libXi, libXinerama, libXrandr, libXss, libfreetype, libfontconfig.
+
+PitchDelay (the executable) is a standalone version for quick testing; it also needs libasound (ALSA).
 
 Licence: AGPL-3.0-only (see LICENSE). Source: https://github.com/ameisevinyl/pitchdelay
