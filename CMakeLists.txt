@@ -10,11 +10,23 @@ if(PITCHDELAY_UNIVERSAL)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
 endif()
 
-project(PitchDelay VERSION 0.0.1 LANGUAGES C CXX)
+project(PitchDelay VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd
+
+if(MSVC)
+    # Link the C++ runtime statically so users do not need the Visual C++ redistributable.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+# Audio Units exist only on macOS.
+if(APPLE)
+    set(PITCHDELAY_FORMATS AU VST3 Standalone)
+else()
+    set(PITCHDELAY_FORMATS VST3 Standalone)
+endif()
 
 option(PITCHDELAY_INSTALL_AFTER_BUILD "Copy plugins to ~/Library/Audio/Plug-Ins after build" ON)
 
@@ -40,7 +52,7 @@ juce_add_plugin(PitchDelay
     COPY_PLUGIN_AFTER_BUILD ${PITCHDELAY_INSTALL_AFTER_BUILD}
     PLUGIN_MANUFACTURER_CODE Amvl
     PLUGIN_CODE Pdly
-    FORMATS AU VST3 Standalone
+    FORMATS ${PITCHDELAY_FORMATS}
     PRODUCT_NAME "PitchDelay"
     AU_MAIN_TYPE kAudioUnitType_Effect
     VST3_CATEGORIES Fx Delay
@@ -57,6 +69,8 @@ target_include_directories(PitchDelay PRIVATE plugin)
 target_compile_definitions(PitchDelay PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_JACK=0                       # fewer Linux system libraries; ALSA is enough for the Standalone app
+    JUCE_PLUGINHOST_LADSPA=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(PitchDelay
     PRIVATE juce::juce_audio_utils
@@ -85,7 +99,7 @@ target_sources(pitchdelay_processor_tests PRIVATE
     tests/EditorTests.cpp)
 target_include_directories(pitchdelay_processor_tests PRIVATE plugin)
 target_compile_definitions(pitchdelay_processor_tests PRIVATE
-    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_JACK=0 JUCE_PLUGINHOST_LADSPA=0)
 target_link_libraries(pitchdelay_processor_tests PRIVATE
     pitchdelay_core
     juce::juce_audio_processors
