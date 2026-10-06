@@ -2,10 +2,10 @@
 
 An exact delay plugin (AU / VST3) for the drive channel of a record-cutting lathe. It delays audio by a
 fraction of a platter revolution, so the pitch control can look ahead of the cut. Default is half a
-revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM ([background](https://flokason.ch/pitch13_manual.html)).
+revolution: 0.9 s at 33⅓ RPM, ⅔ s at 45 RPM.
 
 - 100 % wet and bit-identical, delayed by a whole number of sample frames
-- Reports **0 latency**: the DAW does not compensate, the delayed path is late by exactly N frames
+- Reports 0 latency: the DAW does not compensate, the delayed path is late by exactly N frames
 - 33⅓ / 45 RPM, fraction 1/1 … 1/16 of a revolution, fine-tuning in samples or milliseconds
 - **Calibration**: a 1 kHz tone burst every N frames, for measuring the real platter speed
 - Stopping the transport clears the buffer; bypass passes the audio through undelayed
